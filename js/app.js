@@ -11,8 +11,8 @@ function isValidSlug(slug) {
 }
 
 function sanitizePath(slug, filename) {
-  if (!isValidSlug(slug)) throw new Error('Invalid slug');
-  if (!/^[\w\-\.]+\.jpg$/i.test(filename)) throw new Error('Invalid filename');
+  if (!isValidSlug(slug)) return null;
+  if (!/^[\w\-\.]+\.jpg$/i.test(filename)) return null;
   return `${slug}/${filename}`;
 }
 
@@ -53,6 +53,11 @@ function showLanding(comic) {
   // Background cover image (sanitize URL)
   const bg = document.getElementById('landing-bg');
   const coverPath = sanitizePath(comic.slug, 'cover.jpg');
+  if (!coverPath) {
+    console.error('Invalid cover path for comic:', comic.slug);
+    showLibrary();
+    return;
+  }
   bg.style.backgroundImage = `url('${coverPath}')`;
 
   showScreen('screen-landing');
@@ -85,10 +90,21 @@ function buildLibrary() {
     // Safe cover image
     let coverNode;
     if (comic.status === 'available') {
-      coverNode = document.createElement('img');
-      coverNode.className = 'card-cover';
-      coverNode.src = sanitizePath(comic.slug, 'cover.jpg');
-      coverNode.alt = `${comic.title} cover`;
+      const coverPath = sanitizePath(comic.slug, 'cover.jpg');
+      if (coverPath) {
+        coverNode = document.createElement('img');
+        coverNode.className = 'card-cover';
+        coverNode.src = coverPath;
+        coverNode.alt = `${comic.title} cover`;
+      } else {
+        console.error('Invalid cover path for comic:', comic.slug);
+        coverNode = document.createElement('div');
+        coverNode.className = 'card-cover-placeholder';
+        const label = document.createElement('div');
+        label.className = 'placeholder-label';
+        label.textContent = 'Error\nLoading';
+        coverNode.appendChild(label);
+      }
     } else {
       coverNode = document.createElement('div');
       coverNode.className = 'card-cover-placeholder';
@@ -187,11 +203,9 @@ function renderPanel(idx, direction) {
   const panelNum = String(idx + 1).padStart(2, '0');
   
   // Validate and sanitize panel path
-  let newSrc;
-  try {
-    newSrc = sanitizePath(activeComic.slug, `panel-${panelNum}.jpg`);
-  } catch (e) {
-    console.error('Invalid panel path', e);
+  const newSrc = sanitizePath(activeComic.slug, `panel-${panelNum}.jpg`);
+  if (!newSrc) {
+    console.error('Invalid panel path for comic:', activeComic.slug, 'panel:', panelNum);
     return;
   }
 
@@ -226,12 +240,11 @@ function renderPanel(idx, direction) {
 
   // Preload next panel
   if (idx + 1 < total) {
-    const pre = new Image();
     const nextPanelNum = String(idx + 2).padStart(2, '0');
-    try {
-      pre.src = sanitizePath(activeComic.slug, `panel-${nextPanelNum}.jpg`);
-    } catch (e) {
-      console.error('Failed to preload next panel', e);
+    const preSrc = sanitizePath(activeComic.slug, `panel-${nextPanelNum}.jpg`);
+    if (preSrc) {
+      const pre = new Image();
+      pre.src = preSrc;
     }
   }
 
