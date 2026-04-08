@@ -1,0 +1,54 @@
+# OS & Editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Dependencies (if ever added)
+node_modules/
+*.npm
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+*.zip
+*.tar.gz
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+*.iml
+.classpath
+.c9/
+*.launch
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+
+# Misc
+.cache/
+.parcel-cache
+.next
+.nuxt
+
+# Security
+.htpasswd
+secrets.txt
+credentials.json
