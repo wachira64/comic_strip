@@ -4,9 +4,50 @@
  * Comic data lives in js/comics.js
  */
 
+// ── Security: Slug Validation ───────────────────────────────────────────────
+function isValidSlug(slug) {
+  if (typeof slug !== 'string') return false;
+  return /^[a-z0-9\-_]+$/.test(slug) && slug.length > 0 && slug.length < 100;
+}
+
+function sanitizePath(slug, filename) {
+  if (!isValidSlug(slug)) return null;
+  if (!/^[\w\-\.]+\.jpg$/i.test(filename)) return null;
+  return `${slug}/${filename}`;
+}
+
 // ── State ────────────────────────────────────────────────────────────────────
 let activeComic   = null;   // the currently selected comic object
 let currentPanel  = 0;      // zero-based panel index
+let isAudioEnabled = false; // whether read-aloud is currently active
+
+// ── Audio (Web Speech API) ──────────────────────────────────────────────────
+function toggleAudio() {
+  isAudioEnabled = !isAudioEnabled;
+  const btn = document.getElementById('btn-audio');
+  const iconOn = document.getElementById('icon-audio-on');
+  const iconOff = document.getElementById('icon-audio-off');
+
+  if (isAudioEnabled) {
+    btn.classList.add('active');
+    iconOn.style.display = 'block';
+    iconOff.style.display = 'none';
+    const data = activeComic.captions[currentPanel];
+    speakText(`${data.title}. ${data.caption}`);
+  } else {
+    btn.classList.remove('active');
+    iconOn.style.display = 'none';
+    iconOff.style.display = 'block';
+    window.speechSynthesis.cancel();
+  }
+}
+
+function speakText(text) {
+  if (!isAudioEnabled || !text) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  window.speechSynthesis.speak(utterance);
+}
 
 // ── Screen switching ──────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -22,18 +63,32 @@ function showLibrary() {
 }
 
 function showLanding(comic) {
+  window.speechSynthesis.cancel(); // stop any ongoing audio if leaving reader
   activeComic = comic;
 
-  // Update landing page content dynamically
+  // Validate comic data
+  if (!isValidSlug(comic.slug)) {
+    console.error('Invalid comic slug');
+    showLibrary();
+    return;
+  }
+
+  // Update landing page content dynamically (textContent prevents XSS)
   document.getElementById('landing-eyebrow').textContent =
     `${comic.author} · ${comic.tag}`;
   document.getElementById('landing-title').textContent   = comic.title;
   document.getElementById('landing-desc').textContent    = comic.desc;
   document.getElementById('landing-panel-count').textContent = comic.panels;
 
-  // Background cover image
+  // Background cover image (sanitize URL)
   const bg = document.getElementById('landing-bg');
-  bg.style.backgroundImage = `url('${comic.slug}/cover.jpg')`;
+  const coverPath = sanitizePath(comic.slug, 'cover.jpg');
+  if (!coverPath) {
+    console.error('Invalid cover path for comic:', comic.slug);
+    showLibrary();
+    return;
+  }
+  bg.style.backgroundImage = `url('${coverPath}')`;
 
   showScreen('screen-landing');
 }
@@ -52,35 +107,98 @@ function buildLibrary() {
   grid.innerHTML = '';
 
   COMICS.forEach((comic, i) => {
+    // Validate slug before using
+    if (!isValidSlug(comic.slug)) {
+      console.error(`Skipping comic with invalid slug: ${comic.slug}`);
+      return;
+    }
+
     const card = document.createElement('div');
     card.className = 'comic-card' + (comic.status === 'coming-soon' ? ' card-soon' : '');
     card.style.animationDelay = `${i * 0.1}s`;
 
-    const coverHTML = comic.status === 'available'
-      ? `<img class="card-cover" src="${comic.slug}/cover.jpg" alt="${comic.title} cover">`
-      : `<div class="card-cover-placeholder"><div class="placeholder-label">Coming<br>Soon</div></div>`;
-
-    const btnHTML = comic.status === 'available'
-      ? `<button class="card-cta" onclick="event.stopPropagation(); showLanding(COMICS[${i}])">
-           Read Now
-           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-         </button>`
-      : `<button class="card-cta" disabled>Coming Soon</button>`;
-
-    card.innerHTML = `
-      ${coverHTML}
-      <div class="card-body">
-        <div class="card-tag">${comic.tag}</div>
-        <div class="card-title">${comic.title}</div>
-        <div class="card-author">by ${comic.author}</div>
-        <div class="card-desc">${comic.desc}</div>
-        ${btnHTML}
-      </div>`;
-
+    // Safe cover image
+    let coverNode;
     if (comic.status === 'available') {
-      card.onclick = () => showLanding(comic);
+      const coverPath = sanitizePath(comic.slug, 'cover.jpg');
+      if (coverPath) {
+        coverNode = document.createElement('img');
+        coverNode.className = 'card-cover';
+        coverNode.src = coverPath;
+        coverNode.alt = `${comic.title} cover`;
+      } else {
+        console.error('Invalid cover path for comic:', comic.slug);
+        coverNode = document.createElement('div');
+        coverNode.className = 'card-cover-placeholder';
+        const label = document.createElement('div');
+        label.className = 'placeholder-label';
+        label.textContent = 'Error\nLoading';
+        coverNode.appendChild(label);
+      }
+    } else {
+      coverNode = document.createElement('div');
+      coverNode.className = 'card-cover-placeholder';
+      const label = document.createElement('div');
+      label.className = 'placeholder-label';
+      label.textContent = 'Coming\nSoon';
+      coverNode.appendChild(label);
     }
 
+    // Card body
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    const tag = document.createElement('div');
+    tag.className = 'card-tag';
+    tag.textContent = comic.tag;
+
+    const title = document.createElement('div');
+    title.className = 'card-title';
+    title.textContent = comic.title;
+
+    const author = document.createElement('div');
+    author.className = 'card-author';
+    author.textContent = `by ${comic.author}`;
+
+    const desc = document.createElement('div');
+    desc.className = 'card-desc';
+    desc.textContent = comic.desc;
+
+    const btn = document.createElement('button');
+    btn.className = 'card-cta';
+    btn.disabled = comic.status !== 'available';
+    btn.textContent = comic.status === 'available' ? 'Read Now' : 'Coming Soon';
+
+    // Add icon for "Read Now" button only
+    if (comic.status === 'available') {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2.5');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M5 12h14M12 5l7 7-7 7');
+      svg.appendChild(path);
+      btn.appendChild(svg);
+    }
+
+    // Event listener instead of inline onclick
+    if (comic.status === 'available') {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showLanding(comic);
+      });
+      card.addEventListener('click', () => showLanding(comic));
+    }
+
+    body.appendChild(tag);
+    body.appendChild(title);
+    body.appendChild(author);
+    body.appendChild(desc);
+    body.appendChild(btn);
+
+    card.appendChild(coverNode);
+    card.appendChild(body);
     grid.appendChild(card);
   });
 }
@@ -93,7 +211,8 @@ function buildDots() {
   for (let i = 0; i < total; i++) {
     const d = document.createElement('div');
     d.className = 'dot' + (i === 0 ? ' active' : '');
-    d.onclick   = () => goTo(i);
+    const panelIndex = i; // Capture index safely
+    d.addEventListener('click', () => goTo(panelIndex));
     c.appendChild(d);
   }
 }
@@ -111,7 +230,14 @@ function renderPanel(idx, direction) {
   const narrEl  = document.getElementById('reader-title-text');
   const capEl   = document.getElementById('reader-caption-text');
   const data    = activeComic.captions[idx];
-  const newSrc  = `${activeComic.slug}/panel-${String(idx + 1).padStart(2, '0')}.jpg`;
+  const panelNum = String(idx + 1).padStart(2, '0');
+  
+  // Validate and sanitize panel path
+  const newSrc = sanitizePath(activeComic.slug, `panel-${panelNum}.jpg`);
+  if (!newSrc) {
+    console.error('Invalid panel path for comic:', activeComic.slug, 'panel:', panelNum);
+    return;
+  }
 
   // Slide animation
   const outClass = direction === 'next' ? 'slide-out-left'  : 'slide-out-right';
@@ -123,6 +249,7 @@ function renderPanel(idx, direction) {
       img.src = newSrc;
       narrEl.textContent = data.title;
       capEl.textContent  = data.caption;
+      if (isAudioEnabled) speakText(`${data.title}. ${data.caption}`);
       img.classList.remove(outClass);
       img.classList.add(inClass);
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -133,6 +260,7 @@ function renderPanel(idx, direction) {
     img.src = newSrc;
     narrEl.textContent = data.title;
     capEl.textContent  = data.caption;
+    if (isAudioEnabled) speakText(`${data.title}. ${data.caption}`);
   }
 
   // Progress UI
@@ -144,8 +272,12 @@ function renderPanel(idx, direction) {
 
   // Preload next panel
   if (idx + 1 < total) {
-    const pre = new Image();
-    pre.src = `${activeComic.slug}/panel-${String(idx + 2).padStart(2, '0')}.jpg`;
+    const nextPanelNum = String(idx + 2).padStart(2, '0');
+    const preSrc = sanitizePath(activeComic.slug, `panel-${nextPanelNum}.jpg`);
+    if (preSrc) {
+      const pre = new Image();
+      pre.src = preSrc;
+    }
   }
 
   updateDots(idx);

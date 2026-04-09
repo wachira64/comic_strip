@@ -19,6 +19,35 @@ function sanitizePath(slug, filename) {
 // ── State ────────────────────────────────────────────────────────────────────
 let activeComic   = null;   // the currently selected comic object
 let currentPanel  = 0;      // zero-based panel index
+let isAudioEnabled = false; // whether read-aloud is currently active
+
+// ── Audio (Web Speech API) ──────────────────────────────────────────────────
+function toggleAudio() {
+  isAudioEnabled = !isAudioEnabled;
+  const btn = document.getElementById('btn-audio');
+  const iconOn = document.getElementById('icon-audio-on');
+  const iconOff = document.getElementById('icon-audio-off');
+
+  if (isAudioEnabled) {
+    btn.classList.add('active');
+    iconOn.style.display = 'block';
+    iconOff.style.display = 'none';
+    const data = activeComic.captions[currentPanel];
+    speakText(`${data.title}. ${data.caption}`);
+  } else {
+    btn.classList.remove('active');
+    iconOn.style.display = 'none';
+    iconOff.style.display = 'block';
+    window.speechSynthesis.cancel();
+  }
+}
+
+function speakText(text) {
+  if (!isAudioEnabled || !text) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  window.speechSynthesis.speak(utterance);
+}
 
 // ── Screen switching ──────────────────────────────────────────────────────────
 function showScreen(id) {
@@ -34,6 +63,7 @@ function showLibrary() {
 }
 
 function showLanding(comic) {
+  window.speechSynthesis.cancel(); // stop any ongoing audio if leaving reader
   activeComic = comic;
 
   // Validate comic data
@@ -219,6 +249,7 @@ function renderPanel(idx, direction) {
       img.src = newSrc;
       narrEl.textContent = data.title;
       capEl.textContent  = data.caption;
+      if (isAudioEnabled) speakText(`${data.title}. ${data.caption}`);
       img.classList.remove(outClass);
       img.classList.add(inClass);
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -229,6 +260,7 @@ function renderPanel(idx, direction) {
     img.src = newSrc;
     narrEl.textContent = data.title;
     capEl.textContent  = data.caption;
+    if (isAudioEnabled) speakText(`${data.title}. ${data.caption}`);
   }
 
   // Progress UI

@@ -331,6 +331,22 @@ body {
   letter-spacing: 3px;
   color: #444;
 }
+.reader-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.reader-audio-btn {
+  background: none; border: none; cursor: pointer;
+  color: #666;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s;
+  padding: 4px; border-radius: 4px;
+}
+.reader-audio-btn:hover { color: var(--gold); }
+.reader-audio-btn.active { color: var(--gold); }
+.reader-audio-btn svg { width: 18px; height: 18px; }
+
 .reader-progress-label {
   font-size: 0.7rem; font-weight: 700;
   letter-spacing: 1px; color: #444;
